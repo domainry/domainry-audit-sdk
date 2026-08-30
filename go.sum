@@ -1,0 +1,4 @@
+github.com/domainry/domainry-foundation v0.1.0-dev.6 h1:V5s/3IRGb0PFBZgqlX8Rb3vKModUATIGDgzC9rEqF9A=
+github.com/domainry/domainry-foundation v0.1.0-dev.6/go.mod h1:+BYiJIIQbc1Z9Xfmo7EQCkfcB8uNV6Fcd+RHFigAW4o=
+github.com/domainry/domainry-orm v0.1.25 h1:Q/FRU/3sbJU6G2lnZ1laufD+7k2hwDtHzakQd4h6oq0=
+github.com/domainry/domainry-orm v0.1.25/go.mod h1:NKMojLuridkYCS4i5L7BO7LMTMsf/uOkWQ9OQ+9Vdn4=
