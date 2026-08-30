@@ -269,16 +269,38 @@ func (s *Service[P, S]) DownloadBusinessEventExport(ctx context.Context, token s
 }
 
 type BusinessAuditEventDTO struct {
-	ID, Event, ObjectKey, RecordID, ActorID, Summary, CreatedAt string
-	Before, After                                               map[string]any
+	ID        string         `json:"id"`
+	Event     string         `json:"event"`
+	ObjectKey string         `json:"object_key,omitempty"`
+	RecordID  string         `json:"record_id,omitempty"`
+	ActorID   string         `json:"actor_id"`
+	Summary   string         `json:"summary"`
+	Before    map[string]any `json:"before,omitempty"`
+	After     map[string]any `json:"after,omitempty"`
+	CreatedAt string         `json:"created_at"`
 }
 type TenantGovernanceAuditEventDTO struct {
-	ID, Event, ObjectKey, RecordID, ActorID, RoleKey, Summary, CreatedAt string
-	Metadata, Before, After                                              map[string]any
+	ID        string         `json:"id"`
+	Event     string         `json:"event"`
+	ObjectKey string         `json:"object_key,omitempty"`
+	RecordID  string         `json:"record_id,omitempty"`
+	ActorID   string         `json:"actor_id"`
+	RoleKey   string         `json:"role_key,omitempty"`
+	Summary   string         `json:"summary"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	Before    map[string]any `json:"before,omitempty"`
+	After     map[string]any `json:"after,omitempty"`
+	CreatedAt string         `json:"created_at"`
 }
 type OperationsAuditEventDTO struct {
-	ID, Event, ObjectKey, RecordID, ActorID, Summary, CreatedAt string
-	Metadata                                                    map[string]any
+	ID        string         `json:"id"`
+	Event     string         `json:"event"`
+	ObjectKey string         `json:"object_key,omitempty"`
+	RecordID  string         `json:"record_id,omitempty"`
+	ActorID   string         `json:"actor_id"`
+	Summary   string         `json:"summary"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
+	CreatedAt string         `json:"created_at"`
 }
 type SurfaceAuditResult[T any] struct {
 	Items          []T    `json:"items"`

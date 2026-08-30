@@ -53,11 +53,6 @@ type ExportArtifact struct {
 	LastDownloadedAt         string       `json:"last_downloaded_at,omitempty"`
 }
 
-// Compatibility aliases preserve the existing Runtime HTTP API while the
-// reusable Audit module uses neutral export terminology internally.
-type AuditBusinessExportFilter = ExportFilter
-type AuditBusinessExportRequest = ExportRequest
-type AuditBusinessExportArtifact = ExportArtifact
 type ExportStore interface {
 	CreateOrGetExport(context.Context, ExportArtifact) (ExportArtifact, bool, error)
 	ExportByTokenHash(context.Context, string, string) (ExportArtifact, bool, error)
@@ -105,7 +100,7 @@ func (e *ExportError) Unwrap() error {
 
 type Exporter interface {
 	ConfigureExport([]byte, ExportAuthorizer)
-	PrepareExport(context.Context, AuditBusinessExportRequest, string, ExportPrincipal) (ExportPrepared, error)
+	PrepareExport(context.Context, ExportRequest, string, ExportPrincipal) (ExportPrepared, error)
 	DownloadExport(context.Context, string, ExportPrincipal) ([]byte, string, error)
 }
 
