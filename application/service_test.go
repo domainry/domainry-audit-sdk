@@ -11,7 +11,6 @@ type testPrincipal struct {
 	known, view bool
 	workspace   string
 	user        string
-	permissions map[string]bool
 }
 type testScope struct{ valid bool }
 type memoryStore struct {
@@ -50,16 +49,15 @@ func testPolicy() Policy[testPrincipal, testScope] {
 			}
 			return nil
 		},
-		Known:         func(p testPrincipal) bool { return p.known },
-		CanView:       func(p testPrincipal) bool { return p.view },
-		HasPermission: func(p testPrincipal, permission string, _ bool) bool { return p.permissions[permission] },
+		Known:   func(p testPrincipal) bool { return p.known },
+		CanView: func(p testPrincipal) bool { return p.view },
 	}
 }
 
 func TestServiceOwnsReusableAuditApplicationFlow(t *testing.T) {
 	store := &memoryStore{options: []contract.AuditOption{{Value: "created", Label: "created"}}}
 	service := NewService(store, testPolicy())
-	principal := testPrincipal{known: true, view: true, workspace: "workspace-1", user: "user-1", permissions: map[string]bool{PermissionBusinessAuditRead: true}}
+	principal := testPrincipal{known: true, view: true, workspace: "workspace-1", user: "user-1"}
 	service.AppendWithMetadata(t.Context(), "created", "order", "order-1", principal, "created", nil, map[string]any{"password": "secret"}, map[string]any{"token": "secret"})
 	if len(store.events) != 1 || store.events[0].WorkspaceID != "workspace-1" || store.events[0].ActorID != "user-1" {
 		t.Fatalf("events=%#v", store.events)
@@ -74,10 +72,6 @@ func TestServiceOwnsReusableAuditApplicationFlow(t *testing.T) {
 	options, err := service.Options(t.Context(), contract.AuditOptionQuery{Field: "event"}, principal)
 	if err != nil || len(options) != 1 {
 		t.Fatalf("options=%#v err=%v", options, err)
-	}
-	surface, err := service.BusinessEvents(t.Context(), contract.AuditEventQuery{}, principal)
-	if err != nil || len(surface.Items) != 1 || surface.Items[0].RecordID != "order-1" {
-		t.Fatalf("surface=%#v err=%v", surface, err)
 	}
 }
 

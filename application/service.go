@@ -1,26 +1,16 @@
 // Package application provides the reusable host-facing Audit application
 // service. Hosts supply identity and authorization policy; Audit owns event
-// construction, persistence orchestration, querying, surfaces, and exports.
+// construction, persistence orchestration, and host-facing querying.
 package application
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"time"
 
 	"github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
 	"github.com/domainry/domainry-foundation/secrets"
-)
-
-const (
-	PermissionBusinessAuditRead      = "audit.business.read"
-	PermissionBusinessAuditExport    = "audit.business.export"
-	PermissionTenantGovernanceRead   = "audit.governance.read"
-	PermissionTenantGovernanceExport = "audit.governance.export"
-	PermissionOperationsAuditRead    = "audit.ops.read"
-	PermissionOperationsAuditExport  = "audit.ops.export"
 )
 
 type AppendRequest[P any] struct {
@@ -77,23 +67,16 @@ type Policy[P, S any] struct {
 	ValidateSystemQuery func(S) error
 	Known               func(P) bool
 	CanView             func(P) bool
-	HasPermission       func(P, string, bool) bool
-	ExportPrincipal     func(P) contract.ExportPrincipal
 	ProjectEvents       func(context.Context, []contract.AuditEvent, P) ([]contract.AuditEvent, error)
 }
 
 type Service[P, S any] struct {
-	store    Store[S]
-	policy   Policy[P, S]
-	exporter contract.Exporter
+	store  Store[S]
+	policy Policy[P, S]
 }
 
-func NewService[P, S any](store Store[S], policy Policy[P, S], exporters ...contract.Exporter) *Service[P, S] {
-	service := &Service[P, S]{store: store, policy: policy}
-	if len(exporters) > 0 {
-		service.exporter = exporters[0]
-	}
-	return service
+func NewService[P, S any](store Store[S], policy Policy[P, S]) *Service[P, S] {
+	return &Service[P, S]{store: store, policy: policy}
 }
 
 func (s *Service[P, S]) NewAuditEvent(_ context.Context, request AppendRequest[P]) contract.AuditEvent {
@@ -215,176 +198,6 @@ func (s *Service[P, S]) ListAuditOptions(ctx context.Context, workspaceID string
 	return s.store.ListAuditOptions(ctx, workspaceID, query)
 }
 
-func (s *Service[P, S]) ConfigureBusinessExport(key []byte, authorizer func(context.Context, contract.ExportFilter, P) error) {
-	if s == nil || s.exporter == nil {
-		return
-	}
-	s.exporter.ConfigureExport(key, func(ctx context.Context, filter contract.ExportFilter, actor contract.ExportPrincipal) error {
-		principal, ok := actor.AuthorizationContext.(P)
-		if !ok {
-			return appError(apperror.KindForbidden, "backend.audit.export_scope_changed", nil)
-		}
-		if authorizer == nil {
-			return nil
-		}
-		return authorizer(ctx, filter, principal)
-	})
-}
-
-type BusinessAuditExportPrepared = contract.ExportPrepared
-
-func (s *Service[P, S]) PrepareBusinessEventExport(ctx context.Context, request contract.ExportRequest, key string, principal P) (BusinessAuditExportPrepared, error) {
-	if err := s.requirePermission(principal, PermissionBusinessAuditExport, false); err != nil {
-		return BusinessAuditExportPrepared{}, err
-	}
-	if err := s.requirePermission(principal, PermissionBusinessAuditRead, false); err != nil {
-		return BusinessAuditExportPrepared{}, err
-	}
-	if s == nil || s.exporter == nil || s.policy.ExportPrincipal == nil {
-		return BusinessAuditExportPrepared{}, appError(apperror.KindInternal, "backend.audit.export_unavailable", nil)
-	}
-	prepared, err := s.exporter.PrepareExport(ctx, request, key, s.policy.ExportPrincipal(principal))
-	if err != nil {
-		return BusinessAuditExportPrepared{}, exportError(err)
-	}
-	prepared.ReportSource = "business_audit_events"
-	return prepared, nil
-}
-
-func (s *Service[P, S]) DownloadBusinessEventExport(ctx context.Context, token string, principal P) ([]byte, string, error) {
-	if err := s.requirePermission(principal, PermissionBusinessAuditExport, false); err != nil {
-		return nil, "", err
-	}
-	if err := s.requirePermission(principal, PermissionBusinessAuditRead, false); err != nil {
-		return nil, "", err
-	}
-	if s == nil || s.exporter == nil || s.policy.ExportPrincipal == nil {
-		return nil, "", appError(apperror.KindInternal, "backend.audit.export_unavailable", nil)
-	}
-	content, filename, err := s.exporter.DownloadExport(ctx, token, s.policy.ExportPrincipal(principal))
-	if err != nil {
-		return nil, "", exportError(err)
-	}
-	return content, filename, nil
-}
-
-type BusinessAuditEventDTO struct {
-	ID        string         `json:"id"`
-	Event     string         `json:"event"`
-	ObjectKey string         `json:"object_key,omitempty"`
-	RecordID  string         `json:"record_id,omitempty"`
-	ActorID   string         `json:"actor_id"`
-	Summary   string         `json:"summary"`
-	Before    map[string]any `json:"before,omitempty"`
-	After     map[string]any `json:"after,omitempty"`
-	CreatedAt string         `json:"created_at"`
-}
-type TenantGovernanceAuditEventDTO struct {
-	ID        string         `json:"id"`
-	Event     string         `json:"event"`
-	ObjectKey string         `json:"object_key,omitempty"`
-	RecordID  string         `json:"record_id,omitempty"`
-	ActorID   string         `json:"actor_id"`
-	RoleKey   string         `json:"role_key,omitempty"`
-	Summary   string         `json:"summary"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	Before    map[string]any `json:"before,omitempty"`
-	After     map[string]any `json:"after,omitempty"`
-	CreatedAt string         `json:"created_at"`
-}
-type OperationsAuditEventDTO struct {
-	ID        string         `json:"id"`
-	Event     string         `json:"event"`
-	ObjectKey string         `json:"object_key,omitempty"`
-	RecordID  string         `json:"record_id,omitempty"`
-	ActorID   string         `json:"actor_id"`
-	Summary   string         `json:"summary"`
-	Metadata  map[string]any `json:"metadata,omitempty"`
-	CreatedAt string         `json:"created_at"`
-}
-type SurfaceAuditResult[T any] struct {
-	Items          []T    `json:"items"`
-	Count          int    `json:"count"`
-	PageSize       int    `json:"page_size"`
-	Truncated      bool   `json:"truncated"`
-	NextCursor     string `json:"next_cursor,omitempty"`
-	RetentionClass string `json:"retention_class"`
-	RetentionDays  int    `json:"retention_days"`
-}
-
-func (s *Service[P, S]) BusinessEvents(ctx context.Context, q contract.AuditEventQuery, p P) (SurfaceAuditResult[BusinessAuditEventDTO], error) {
-	r, err := s.surface(ctx, contract.SurfaceBusiness, q, p, PermissionBusinessAuditRead, false)
-	if err != nil {
-		return SurfaceAuditResult[BusinessAuditEventDTO]{}, err
-	}
-	items := make([]BusinessAuditEventDTO, 0, len(r.Items))
-	for _, e := range r.Items {
-		items = append(items, BusinessAuditEventDTO{ID: e.ID, Event: e.Event, ObjectKey: e.ObjectKey, RecordID: e.RecordID, ActorID: e.ActorID, Summary: e.Summary, Before: e.Before, After: e.After, CreatedAt: e.CreatedAt})
-	}
-	return surfaceResult(r, items), nil
-}
-
-func (s *Service[P, S]) TenantGovernanceEvents(ctx context.Context, q contract.AuditEventQuery, p P) (SurfaceAuditResult[TenantGovernanceAuditEventDTO], error) {
-	r, err := s.surface(ctx, contract.SurfaceGovernance, q, p, PermissionTenantGovernanceRead, true)
-	if err != nil {
-		return SurfaceAuditResult[TenantGovernanceAuditEventDTO]{}, err
-	}
-	items := make([]TenantGovernanceAuditEventDTO, 0, len(r.Items))
-	for _, e := range r.Items {
-		items = append(items, TenantGovernanceAuditEventDTO{ID: e.ID, Event: e.Event, ObjectKey: e.ObjectKey, RecordID: e.RecordID, ActorID: e.ActorID, RoleKey: e.RoleKey, Summary: e.Summary, Metadata: e.Metadata, Before: e.Before, After: e.After, CreatedAt: e.CreatedAt})
-	}
-	return surfaceResult(r, items), nil
-}
-
-func (s *Service[P, S]) OperationsEvents(ctx context.Context, q contract.AuditEventQuery, p P) (SurfaceAuditResult[OperationsAuditEventDTO], error) {
-	r, err := s.surface(ctx, contract.SurfaceOperations, q, p, PermissionOperationsAuditRead, false)
-	if err != nil {
-		return SurfaceAuditResult[OperationsAuditEventDTO]{}, err
-	}
-	items := make([]OperationsAuditEventDTO, 0, len(r.Items))
-	for _, e := range r.Items {
-		items = append(items, OperationsAuditEventDTO{ID: e.ID, Event: e.Event, ObjectKey: e.ObjectKey, RecordID: e.RecordID, ActorID: e.ActorID, Summary: e.Summary, Metadata: e.Metadata, CreatedAt: e.CreatedAt})
-	}
-	return surfaceResult(r, items), nil
-}
-
-func (s *Service[P, S]) TenantGovernanceExport(ctx context.Context, q contract.AuditEventQuery, p P) (SurfaceAuditResult[TenantGovernanceAuditEventDTO], error) {
-	if err := s.requirePermission(p, PermissionTenantGovernanceExport, true); err != nil {
-		return SurfaceAuditResult[TenantGovernanceAuditEventDTO]{}, err
-	}
-	return s.TenantGovernanceEvents(ctx, q, p)
-}
-
-func (s *Service[P, S]) OperationsExport(ctx context.Context, q contract.AuditEventQuery, p P) (SurfaceAuditResult[OperationsAuditEventDTO], error) {
-	if err := s.requirePermission(p, PermissionOperationsAuditExport, false); err != nil {
-		return SurfaceAuditResult[OperationsAuditEventDTO]{}, err
-	}
-	return s.OperationsEvents(ctx, q, p)
-}
-
-func (s *Service[P, S]) surface(ctx context.Context, kind contract.SurfaceKind, q contract.AuditEventQuery, p P, permission string, inherited bool) (contract.SurfaceResult, error) {
-	if err := s.requirePermission(p, permission, inherited); err != nil {
-		return contract.SurfaceResult{}, err
-	}
-	if err := s.validateQuery(p); err != nil {
-		return contract.SurfaceResult{}, err
-	}
-	actor := s.policy.Actor(p)
-	plan, err := contract.PlanSurface(kind, q, actor.SubjectID, time.Now())
-	if err != nil {
-		return contract.SurfaceResult{}, appError(apperror.KindBadRequest, "backend.audit.cursor_invalid", err)
-	}
-	events, err := s.ListAuditEvents(ctx, s.workspaceID(p), plan.Query)
-	if err != nil {
-		return contract.SurfaceResult{}, err
-	}
-	events, err = s.project(ctx, events, p)
-	if err != nil {
-		return contract.SurfaceResult{}, err
-	}
-	return contract.ProjectSurface(events, plan), nil
-}
-
 func (s *Service[P, S]) validateQuery(p P) error {
 	if s == nil || s.policy.ValidateQuery == nil {
 		return appError(apperror.KindForbidden, "backend.workspace_scope_required", nil)
@@ -413,36 +226,7 @@ func (s *Service[P, S]) SetEventProjector(projector func(context.Context, []cont
 		s.policy.ProjectEvents = projector
 	}
 }
-func (s *Service[P, S]) requirePermission(p P, permission string, inherited bool) error {
-	if s == nil || s.policy.Known == nil || !s.policy.Known(p) || s.policy.HasPermission == nil || !s.policy.HasPermission(p, permission, inherited) {
-		return appError(apperror.KindForbidden, "backend.audit.view_permission_required", nil)
-	}
-	return nil
-}
-func surfaceResult[T any](r contract.SurfaceResult, items []T) SurfaceAuditResult[T] {
-	return SurfaceAuditResult[T]{Items: items, Count: len(items), PageSize: r.PageSize, Truncated: r.Truncated, NextCursor: r.NextCursor, RetentionClass: r.RetentionClass, RetentionDays: r.RetentionDays}
-}
 func RedactSensitiveMap(value map[string]any) map[string]any { return secrets.RedactMap(value) }
 func appError(kind apperror.ErrorKind, code string, err error) error {
 	return &apperror.AppError{Kind: kind, Code: code, Err: err}
-}
-func exportError(err error) error {
-	var exported *contract.ExportError
-	if !errors.As(err, &exported) {
-		return err
-	}
-	kind, code := apperror.KindBadRequest, "backend.audit."+exported.Code
-	switch exported.Code {
-	case "export_unavailable", "export_encode_failed", "export_persistence_failed", "export_audit_failed":
-		kind = apperror.KindInternal
-	case "idempotency_key_conflict":
-		kind, code = apperror.KindConflict, "backend.idempotency.key_conflict"
-	case "idempotency_key_required":
-		code = "backend.idempotency.key_required"
-	case "export_download_not_found":
-		kind = apperror.KindNotFound
-	case "export_requester_mismatch", "export_download_expired", "export_scope_changed", "export_integrity_failed", "export_actor_scope_denied", "export_role_scope_denied":
-		kind = apperror.KindForbidden
-	}
-	return appError(kind, code, err)
 }

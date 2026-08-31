@@ -28,7 +28,9 @@ func (r ApplicationRef) Validate() error {
 	return nil
 }
 
-type Capabilities struct{ TransactionalAppend, Query, Export, SubjectLifecycle, ArchiveReplication bool }
+type Capabilities struct {
+	TransactionalAppend, Query, Export, SubjectLifecycle, ArchiveReplication, HTTPSurface bool
+}
 type Descriptor struct {
 	ProtocolVersion string
 	Mode            DeploymentMode
@@ -57,6 +59,13 @@ type Binding interface {
 	ExportStore() contract.ExportStore
 	Exporter() contract.Exporter
 	Close(context.Context) error
+}
+
+// ApplicationHostBinder completes the product-facing Audit application after
+// embedding-host business services are available. Persistence is opened first
+// through modulehost.Host; cross-owner record access remains a narrow host capability.
+type ApplicationHostBinder interface {
+	BindApplicationHost(modulehost.AuditApplicationHost) error
 }
 
 type ActorMapper[P any] func(P) contract.Actor
