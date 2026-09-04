@@ -30,7 +30,7 @@ func (r ApplicationRef) Validate() error {
 }
 
 type Capabilities struct {
-	TransactionalAppend, Query, Export, SubjectLifecycle, ArchiveReplication, HTTPSurface bool
+	TransactionalAppend, Query, Export, SubjectLifecycle, ArchiveReplication, HTTPAdapter bool
 }
 type Descriptor struct {
 	ProtocolVersion string

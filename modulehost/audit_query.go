@@ -7,9 +7,9 @@ import (
 	identitysdk "github.com/domainry/domainry-identity-sdk"
 )
 
-// AuditSurfacePrincipalRequest contains authenticated identity facts plus the
+// AuditPrincipalRequest contains authenticated identity facts plus the
 // host-owned business-profile selection needed by Audit product surfaces.
-type AuditSurfacePrincipalRequest struct {
+type AuditPrincipalRequest struct {
 	Identity           identitysdk.Principal
 	BusinessProfileKey string
 	BusinessProfileID  string
@@ -17,10 +17,10 @@ type AuditSurfacePrincipalRequest struct {
 	CorrelationID      string
 }
 
-// AuditSurfacePrincipal is the host-resolved authority used by Audit. The base
+// AuditPrincipal is the host-resolved authority used by Audit. The base
 // Identity principal remains intact while AuthorizationRevision also covers
 // host-owned business-profile facts.
-type AuditSurfacePrincipal struct {
+type AuditPrincipal struct {
 	Identity              identitysdk.Principal
 	BusinessProfileKey    string
 	BusinessProfileID     string
@@ -33,8 +33,8 @@ type AuditSurfacePrincipal struct {
 // use cases. Audit owns query/export policy; the embedding host owns record
 // authorization, business-profile resolution, and record-field projection.
 type AuditApplicationHost interface {
-	ResolveAuditSurfacePrincipal(context.Context, AuditSurfacePrincipalRequest) (AuditSurfacePrincipal, error)
-	AuthorizeAuditRecord(context.Context, AuditSurfacePrincipal, string, string) error
-	ProjectAuditEvents(context.Context, AuditSurfacePrincipal, []contract.Event) ([]contract.Event, error)
+	ResolveAuditPrincipal(context.Context, AuditPrincipalRequest) (AuditPrincipal, error)
+	AuthorizeAuditRecord(context.Context, AuditPrincipal, string, string) error
+	ProjectAuditEvents(context.Context, AuditPrincipal, []contract.Event) ([]contract.Event, error)
 	AuditExportTokenKey() []byte
 }
