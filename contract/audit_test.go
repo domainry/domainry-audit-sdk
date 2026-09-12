@@ -21,6 +21,11 @@ func TestClassifyAuditEventAndMarkerCopies(t *testing.T) {
 		{AuditEvent{Event: "order.updated", ObjectKey: "fulfillment_order"}, AuditEventClassBusiness},
 		{AuditEvent{Event: "identity_role_updated", ObjectKey: "role"}, AuditEventClassGovernance},
 		{AuditEvent{Event: "identity_recovery_retry", ObjectKey: "role"}, AuditEventClassOperations},
+		{AuditEvent{Event: "auth_login_failed", ObjectKey: "identity_login"}, AuditEventClassOperations},
+		{AuditEvent{Event: "auth.login_succeeded", ObjectKey: "identity_login"}, AuditEventClassOperations},
+		{AuditEvent{Event: "authentication_challenge_failed", ObjectKey: "identity_login"}, AuditEventClassOperations},
+		{AuditEvent{Event: "audit_export_conflict", ObjectKey: "audit_events"}, AuditEventClassOperations},
+		{AuditEvent{Event: "order_authorized", ObjectKey: "purchase"}, AuditEventClassBusiness},
 	}
 	for _, test := range tests {
 		if got := ClassifyAuditEvent(test.event); got != test.want {
@@ -42,5 +47,33 @@ func TestAuditEventCursorRejectsInvalidInputs(t *testing.T) {
 		if _, err := DecodeAuditEventCursor(invalid); err == nil {
 			t.Fatalf("invalid cursor %q accepted", invalid)
 		}
+	}
+}
+
+func TestBuildEventKeepsRequestIDWithIdempotencyKey(t *testing.T) {
+	now := time.Date(2026, 9, 12, 8, 30, 0, 0, time.UTC)
+	request := AppendRequest{
+		IdempotencyKey: "audit-export-conflict:req-1",
+		Event:          "audit_export_conflict",
+		Actor: Actor{
+			WorkspaceID: "workspace-1",
+			SubjectID:   "user-1",
+			RequestID:   "req-1",
+		},
+	}
+
+	first, err := BuildEvent(request, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := BuildEvent(request, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ID != second.ID {
+		t.Fatalf("idempotent ids differ: %q != %q", first.ID, second.ID)
+	}
+	if got := first.Metadata["request_id"]; got != "req-1" {
+		t.Fatalf("request_id=%v", got)
 	}
 }

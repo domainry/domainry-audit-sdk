@@ -61,6 +61,7 @@ type ExportStore interface {
 
 type ExportPrincipal struct {
 	WorkspaceID, UserID, RoleKey, AuthorizationRevision, SystemScope string
+	RequestID, CorrelationID                                         string
 	SystemCapabilities                                               []string
 	AuthorizationContext                                             any `json:"-"`
 }
@@ -160,7 +161,7 @@ func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
 		metadata = map[string]any{}
 	}
 	metadata["workspace_id"] = request.Actor.WorkspaceID
-	if request.Actor.RequestID != "" && strings.TrimSpace(request.IdempotencyKey) == "" {
+	if request.Actor.RequestID != "" {
 		metadata["request_id"] = request.Actor.RequestID
 	}
 	if request.Actor.CorrelationID != "" {
@@ -199,7 +200,14 @@ type AuditEvent struct {
 type Event = AuditEvent
 
 func ClassifyEvent(event Event) string {
-	value := strings.ToLower(event.Event + " " + event.ObjectKey)
+	eventKey := strings.ToLower(strings.TrimSpace(event.Event))
+	if eventKey == "auth" || strings.HasPrefix(eventKey, "auth_") || strings.HasPrefix(eventKey, "auth.") || strings.HasPrefix(eventKey, "authentication_") || strings.HasPrefix(eventKey, "authentication.") {
+		return EventClassOperations
+	}
+	if eventKey == "audit_export_conflict" {
+		return EventClassOperations
+	}
+	value := eventKey + " " + strings.ToLower(event.ObjectKey)
 	for _, marker := range operationsClassMarkers {
 		if strings.Contains(value, marker) {
 			return EventClassOperations
