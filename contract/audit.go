@@ -313,6 +313,16 @@ type SubjectLifecycle interface {
 	ExportSubject(context.Context, string, string) (json.RawMessage, error)
 	EraseSubject(context.Context, string, string) (json.RawMessage, error)
 }
+
+// SubjectResourceLifecycle redacts content for resources whose subject
+// ownership was resolved by their source module before erasure begins.
+type SubjectResource struct {
+	ObjectKey string `json:"object_key"`
+	RecordID  string `json:"record_id"`
+}
+type SubjectResourceLifecycle interface {
+	EraseSubjectResources(context.Context, string, string, []SubjectResource) (json.RawMessage, error)
+}
 type Result interface{ RowsAffected() (int64, error) }
 type Row interface{ Scan(...any) error }
 type Transaction interface {
