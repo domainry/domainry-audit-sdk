@@ -4,7 +4,6 @@ import (
 	"context"
 
 	sharedartifact "github.com/domainry/domainry-foundation/artifact"
-	sharedoperation "github.com/domainry/domainry-foundation/operation"
 	ormmigration "github.com/domainry/domainry-orm/migration"
 	"github.com/domainry/domainry-orm/sqlhost"
 )
@@ -42,12 +41,4 @@ type ArtifactHost interface {
 	ArtifactStore() sharedartifact.ManagedStore
 	ArtifactContentStore() sharedartifact.ContentStore
 	ArtifactContentWriter() sharedartifact.ContentWriter
-}
-
-// OperationHost supplies the installation-wide command ledger used by export
-// preparation. Export is enabled only when both this port and ArtifactHost are
-// present, so a successful prepare always has one shared Operation receipt and
-// one shared Artifact row.
-type OperationHost interface {
-	OperationStore() sharedoperation.Store
 }
