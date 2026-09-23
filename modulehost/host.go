@@ -35,10 +35,9 @@ type Host interface {
 	Migrations() MigrationRegistrar
 }
 
-// ArtifactHost enables governed export artifacts. Append/query-only hosts may
-// omit it; their Audit binding advertises no export capability.
+// ArtifactHost supplies only deployment-owned immutable bytes. Audit opens
+// the canonical Foundation metadata store itself against Host.Database.
 type ArtifactHost interface {
-	ArtifactStore() sharedartifact.ManagedStore
 	ArtifactContentStore() sharedartifact.ContentStore
 	ArtifactContentWriter() sharedartifact.ContentWriter
 }
