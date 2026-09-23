@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/domainry/domainry-audit-sdk/contract"
+	"github.com/domainry/domainry-foundation/requestcontext"
 )
 
 type testPrincipal struct {
@@ -12,6 +13,25 @@ type testPrincipal struct {
 	workspace   string
 	user        string
 }
+
+func TestServiceCorrelatesAuditWithAcceptedOperation(t *testing.T) {
+	service := NewService(&memoryStore{}, testPolicy())
+	principal := testPrincipal{known: true, view: true, workspace: "workspace-1", user: "user-1"}
+	ctx := requestcontext.WithOwnerExecutionID(t.Context(), "operation-1")
+	event := service.NewAuditEvent(ctx, AppendRequest[testPrincipal]{
+		Family: contract.EventFamilyBusinessAction, Event: "action.executed", Principal: principal, OwnerRunID: "workflow-1", Metadata: map[string]any{"action_key": "order.approve"},
+	})
+	if event.OperationID != "operation-1" || event.OwnerRunID != "workflow-1" {
+		t.Fatalf("event correlation=%#v", event)
+	}
+	explicit := service.NewAuditEvent(ctx, AppendRequest[testPrincipal]{
+		OperationID: "operation-explicit", Family: contract.EventFamilyBusinessAction, Event: "action.executed", Principal: principal, Metadata: map[string]any{"action_key": "order.approve"},
+	})
+	if explicit.OperationID != "operation-explicit" {
+		t.Fatalf("explicit operation identity=%q", explicit.OperationID)
+	}
+}
+
 type testScope struct{ valid bool }
 type memoryStore struct {
 	events  []contract.AuditEvent
@@ -58,7 +78,7 @@ func TestServiceOwnsReusableAuditApplicationFlow(t *testing.T) {
 	store := &memoryStore{options: []contract.AuditOption{{Value: "created", Label: "created"}}}
 	service := NewService(store, testPolicy())
 	principal := testPrincipal{known: true, view: true, workspace: "workspace-1", user: "user-1"}
-	service.AppendWithMetadata(t.Context(), "created", "order", "order-1", principal, "created", nil, map[string]any{"password": "secret"}, map[string]any{"token": "secret"})
+	service.AppendWithMetadata(t.Context(), contract.EventFamilyBusinessRecord, "record_created", "order", "order-1", principal, "created", nil, map[string]any{"password": "secret"}, map[string]any{"token": "secret"})
 	if len(store.events) != 1 || store.events[0].WorkspaceID != "workspace-1" || store.events[0].ActorID != "user-1" {
 		t.Fatalf("events=%#v", store.events)
 	}

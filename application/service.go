@@ -10,11 +10,16 @@ import (
 
 	"github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-foundation/apperror"
+	"github.com/domainry/domainry-foundation/requestcontext"
 	"github.com/domainry/domainry-foundation/secrets"
 )
 
 type AppendRequest[P any] struct {
 	IdempotencyKey string
+	OperationID    string
+	CausationID    string
+	OwnerRunID     string
+	Family         string
 	Event          string
 	ObjectKey      string
 	RecordID       string
@@ -79,12 +84,17 @@ func NewService[P, S any](store Store[S], policy Policy[P, S]) *Service[P, S] {
 	return &Service[P, S]{store: store, policy: policy}
 }
 
-func (s *Service[P, S]) NewAuditEvent(_ context.Context, request AppendRequest[P]) contract.AuditEvent {
+func (s *Service[P, S]) NewAuditEvent(ctx context.Context, request AppendRequest[P]) contract.AuditEvent {
 	if s == nil || s.policy.Actor == nil {
 		return contract.AuditEvent{}
 	}
+	operationID := strings.TrimSpace(request.OperationID)
+	if operationID == "" {
+		operationID = requestcontext.OwnerExecutionID(ctx)
+	}
 	event, err := contract.BuildEvent(contract.AppendRequest{
-		IdempotencyKey: request.IdempotencyKey, Event: request.Event,
+		IdempotencyKey: request.IdempotencyKey, OperationID: operationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID,
+		Family: request.Family, Event: request.Event,
 		ObjectKey: request.ObjectKey, RecordID: request.RecordID,
 		Actor: s.policy.Actor(request.Principal), Summary: request.Summary,
 		Before: request.Before, After: request.After, Metadata: request.Metadata,
@@ -113,15 +123,15 @@ func (s *Service[P, S]) AppendAuditTelemetry(ctx context.Context, request Append
 	_ = s.AppendAudit(ctx, request)
 }
 
-func (s *Service[P, S]) Append(ctx context.Context, event, objectKey, recordID string, principal P, summary string, before, after map[string]any) {
-	s.AppendWithMetadata(ctx, event, objectKey, recordID, principal, summary, before, after, nil)
+func (s *Service[P, S]) Append(ctx context.Context, family, event, objectKey, recordID string, principal P, summary string, before, after map[string]any) {
+	s.AppendWithMetadata(ctx, family, event, objectKey, recordID, principal, summary, before, after, nil)
 }
 
-func (s *Service[P, S]) AppendWithMetadata(ctx context.Context, event, objectKey, recordID string, principal P, summary string, before, after, metadata map[string]any) {
+func (s *Service[P, S]) AppendWithMetadata(ctx context.Context, family, event, objectKey, recordID string, principal P, summary string, before, after, metadata map[string]any) {
 	if s == nil || s.policy.ValidateCommand == nil || s.policy.ValidateCommand(principal) != nil {
 		return
 	}
-	s.AppendAuditTelemetry(ctx, AppendRequest[P]{Event: event, ObjectKey: objectKey, RecordID: recordID, Principal: principal, Summary: summary, Before: before, After: after, Metadata: metadata})
+	s.AppendAuditTelemetry(ctx, AppendRequest[P]{Family: family, Event: event, ObjectKey: objectKey, RecordID: recordID, Principal: principal, Summary: summary, Before: before, After: after, Metadata: metadata})
 }
 
 func (s *Service[P, S]) Events(ctx context.Context, query contract.AuditEventQuery, principal P) ([]contract.AuditEvent, error) {

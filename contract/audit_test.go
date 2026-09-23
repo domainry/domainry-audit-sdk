@@ -13,32 +13,46 @@ func TestCursorRoundTrip(t *testing.T) {
 	}
 }
 
-func TestClassifyAuditEventAndMarkerCopies(t *testing.T) {
+func TestClassifyAuditEventUsesRegisteredFamily(t *testing.T) {
 	tests := []struct {
 		event AuditEvent
 		want  string
 	}{
-		{AuditEvent{Event: "order.updated", ObjectKey: "fulfillment_order"}, AuditEventClassBusiness},
-		{AuditEvent{Event: "identity_role_updated", ObjectKey: "role"}, AuditEventClassGovernance},
-		{AuditEvent{Event: "identity_recovery_retry", ObjectKey: "role"}, AuditEventClassOperations},
-		{AuditEvent{Event: "auth_login_failed", ObjectKey: "identity_login"}, AuditEventClassOperations},
-		{AuditEvent{Event: "auth.login_succeeded", ObjectKey: "identity_login"}, AuditEventClassOperations},
-		{AuditEvent{Event: "authentication_challenge_failed", ObjectKey: "identity_login"}, AuditEventClassOperations},
-		{AuditEvent{Event: "audit_export_conflict", ObjectKey: "audit_events"}, AuditEventClassOperations},
-		{AuditEvent{Event: "order_authorized", ObjectKey: "purchase"}, AuditEventClassBusiness},
+		{AuditEvent{Family: EventFamilyBusinessRecord, Event: "record_updated"}, AuditEventClassBusiness},
+		{AuditEvent{Family: EventFamilyIdentityGovernance, Event: "identity_role_updated"}, AuditEventClassGovernance},
+		{AuditEvent{Family: EventFamilyIdentitySecurity, Event: "auth_login_failed"}, AuditEventClassOperations},
+		{AuditEvent{Family: "unregistered", Event: "anything"}, ""},
 	}
 	for _, test := range tests {
 		if got := ClassifyAuditEvent(test.event); got != test.want {
 			t.Fatalf("class=%q want=%q", got, test.want)
 		}
 	}
-	markers := AuditEventClassMarkers(AuditEventClassOperations)
-	if len(markers) == 0 {
-		t.Fatal("operations markers are empty")
+	families := RegisteredEventFamilies()
+	if len(families) == 0 {
+		t.Fatal("event family registry is empty")
 	}
-	markers[0] = "changed"
-	if AuditEventClassMarkers(AuditEventClassOperations)[0] == "changed" {
-		t.Fatal("caller mutated marker catalog")
+	families[0].RequiredMetadata = append(families[0].RequiredMetadata, "changed")
+	got, _ := EventFamilyRegistrationFor(families[0].Key)
+	if len(got.RequiredMetadata) > 0 && got.RequiredMetadata[len(got.RequiredMetadata)-1] == "changed" {
+		t.Fatal("caller mutated event family registry")
+	}
+}
+
+func TestBuildEventRejectsUnregisteredFamilyAndMissingRequiredMetadata(t *testing.T) {
+	now := time.Date(2026, 9, 23, 8, 30, 0, 0, time.UTC)
+	base := AppendRequest{Family: EventFamilyAuditExport, Event: "audit_export_prepared", Actor: Actor{WorkspaceID: "workspace-1"}}
+	if _, err := BuildEvent(base, now); err == nil {
+		t.Fatal("Audit export without required metadata was accepted")
+	}
+	base.Metadata = map[string]any{"artifact_id": "artifact-1", "result": "success", "reason": "prepared"}
+	event, err := BuildEvent(base, now)
+	if err != nil || event.Family != EventFamilyAuditExport {
+		t.Fatalf("event=%#v err=%v", event, err)
+	}
+	base.Family = "arbitrary"
+	if _, err := BuildEvent(base, now); err == nil {
+		t.Fatal("unregistered event family was accepted")
 	}
 }
 
@@ -54,12 +68,14 @@ func TestBuildEventKeepsRequestIDWithIdempotencyKey(t *testing.T) {
 	now := time.Date(2026, 9, 12, 8, 30, 0, 0, time.UTC)
 	request := AppendRequest{
 		IdempotencyKey: "audit-export-conflict:req-1",
+		Family:         EventFamilyAuditExport,
 		Event:          "audit_export_conflict",
 		Actor: Actor{
 			WorkspaceID: "workspace-1",
 			SubjectID:   "user-1",
 			RequestID:   "req-1",
 		},
+		Metadata: map[string]any{"artifact_id": "artifact-1", "result": "conflict", "reason": "fingerprint_conflict"},
 	}
 
 	first, err := BuildEvent(request, now)
@@ -75,5 +91,24 @@ func TestBuildEventKeepsRequestIDWithIdempotencyKey(t *testing.T) {
 	}
 	if got := first.Metadata["request_id"]; got != "req-1" {
 		t.Fatalf("request_id=%v", got)
+	}
+}
+
+func TestBuildEventKeepsExplicitCorrelationIdentities(t *testing.T) {
+	now := time.Date(2026, 9, 23, 9, 0, 0, 0, time.UTC)
+	event, err := BuildEvent(AppendRequest{
+		OperationID: " operation-1 ", OwnerRunID: " workflow-1 ",
+		Family: EventFamilyBusinessAction, Event: "action.executed",
+		Actor:    Actor{WorkspaceID: "workspace-1", SubjectID: "user-1", CausationID: " cause-1 "},
+		Metadata: map[string]any{"action_key": "order.approve"},
+	}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if event.OperationID != "operation-1" || event.CausationID != "cause-1" || event.OwnerRunID != "workflow-1" {
+		t.Fatalf("correlation identities=%#v", event)
+	}
+	if _, duplicated := event.Metadata["causation_id"]; duplicated {
+		t.Fatalf("causation identity was duplicated into metadata: %#v", event.Metadata)
 	}
 }

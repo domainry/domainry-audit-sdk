@@ -111,20 +111,6 @@ const (
 	EventClassOperations = "operations"
 )
 
-var operationsClassMarkers = []string{"break_glass", "support_session", "security", "recovery", "retry", "dead_letter", "lease", "fencing", "worker", "infrastructure", "runtime_operation", "scheduler_run", "integration_event", "integration_outbox", "workflow_execution", "cleanup_job"}
-var governanceClassMarkers = []string{"identity", "role", "permission", "menu", "metadata", "definition", "change_plan", "policy", "connection", "secret", "configuration", "notification_template", "localized_text", "api_key"}
-
-func EventClassMarkers(class string) []string {
-	switch strings.TrimSpace(class) {
-	case EventClassOperations:
-		return append([]string(nil), operationsClassMarkers...)
-	case EventClassGovernance:
-		return append([]string(nil), governanceClassMarkers...)
-	default:
-		return nil
-	}
-}
-
 type Actor struct {
 	WorkspaceID           string `json:"workspace_id"`
 	SubjectID             string `json:"subject_id"`
@@ -132,11 +118,16 @@ type Actor struct {
 	Kind                  string `json:"kind,omitempty"`
 	RequestID             string `json:"request_id,omitempty"`
 	CorrelationID         string `json:"correlation_id,omitempty"`
+	CausationID           string `json:"causation_id,omitempty"`
 	AuthorizationRevision string `json:"authorization_revision,omitempty"`
 }
 
 type AppendRequest struct {
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
+	OperationID    string         `json:"operation_id,omitempty"`
+	CausationID    string         `json:"causation_id,omitempty"`
+	OwnerRunID     string         `json:"owner_run_id,omitempty"`
+	Family         string         `json:"family"`
 	Event          string         `json:"event"`
 	ObjectKey      string         `json:"object_key,omitempty"`
 	RecordID       string         `json:"record_id,omitempty"`
@@ -148,10 +139,17 @@ type AppendRequest struct {
 }
 
 func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
+	request.Family = strings.TrimSpace(request.Family)
 	request.Event = strings.TrimSpace(request.Event)
+	request.OperationID = strings.TrimSpace(request.OperationID)
+	request.CausationID = strings.TrimSpace(request.CausationID)
+	request.OwnerRunID = strings.TrimSpace(request.OwnerRunID)
+	if request.CausationID == "" {
+		request.CausationID = strings.TrimSpace(request.Actor.CausationID)
+	}
 	request.Actor.WorkspaceID = strings.TrimSpace(request.Actor.WorkspaceID)
-	if request.Event == "" || request.Actor.WorkspaceID == "" {
-		return AuditEvent{}, fmt.Errorf("audit event and workspace are required")
+	if request.Actor.WorkspaceID == "" {
+		return AuditEvent{}, fmt.Errorf("audit workspace is required")
 	}
 	if strings.TrimSpace(request.Actor.SubjectID) == "" {
 		request.Actor.SubjectID = "system"
@@ -173,12 +171,15 @@ func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
 	if request.Actor.RoleKey != "" {
 		metadata["role_key"] = request.Actor.RoleKey
 	}
+	if _, err := validateEventFamily(request.Family, request.Event, metadata); err != nil {
+		return AuditEvent{}, err
+	}
 	now = now.UTC()
 	id := NewEventID(now)
 	if strings.TrimSpace(request.IdempotencyKey) != "" {
 		id = IdempotentEventID(request.Actor.WorkspaceID, request.IdempotencyKey)
 	}
-	return AuditEvent{ID: id, WorkspaceID: request.Actor.WorkspaceID, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID, ActorID: request.Actor.SubjectID, RoleKey: request.Actor.RoleKey, Summary: strings.TrimSpace(request.Summary), Metadata: metadata, Before: secrets.RedactMap(request.Before), After: secrets.RedactMap(request.After), CreatedAt: now.Format(time.RFC3339)}, nil
+	return AuditEvent{ID: id, WorkspaceID: request.Actor.WorkspaceID, OperationID: request.OperationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID, Family: request.Family, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID, ActorID: request.Actor.SubjectID, RoleKey: request.Actor.RoleKey, Summary: strings.TrimSpace(request.Summary), Metadata: metadata, Before: secrets.RedactMap(request.Before), After: secrets.RedactMap(request.After), CreatedAt: now.Format(time.RFC3339)}, nil
 }
 
 // Event preserves the installed Runtime/Identity storage and JSON contract so
@@ -186,6 +187,10 @@ func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
 type AuditEvent struct {
 	ID          string         `json:"id"`
 	WorkspaceID string         `json:"workspace_id"`
+	OperationID string         `json:"operation_id,omitempty"`
+	CausationID string         `json:"causation_id,omitempty"`
+	OwnerRunID  string         `json:"owner_run_id,omitempty"`
+	Family      string         `json:"family"`
 	Event       string         `json:"event"`
 	ObjectKey   string         `json:"object_key,omitempty"`
 	RecordID    string         `json:"record_id,omitempty"`
@@ -200,31 +205,18 @@ type AuditEvent struct {
 type Event = AuditEvent
 
 func ClassifyEvent(event Event) string {
-	eventKey := strings.ToLower(strings.TrimSpace(event.Event))
-	if eventKey == "auth" || strings.HasPrefix(eventKey, "auth_") || strings.HasPrefix(eventKey, "auth.") || strings.HasPrefix(eventKey, "authentication_") || strings.HasPrefix(eventKey, "authentication.") {
-		return EventClassOperations
+	registration, found := EventFamilyRegistrationFor(event.Family)
+	if !found {
+		return ""
 	}
-	if eventKey == "audit_export_conflict" {
-		return EventClassOperations
-	}
-	value := eventKey + " " + strings.ToLower(event.ObjectKey)
-	for _, marker := range operationsClassMarkers {
-		if strings.Contains(value, marker) {
-			return EventClassOperations
-		}
-	}
-	for _, marker := range governanceClassMarkers {
-		if strings.Contains(value, marker) {
-			return EventClassGovernance
-		}
-	}
-	return EventClassBusiness
+	return registration.Class
 }
 
 type AuditEventQuery struct {
-	ObjectKey, RecordID, Event, Class, ActorID, RoleKey, RequestID, CreatedFrom, CreatedTo string
-	Limit                                                                                  int
-	Cursor                                                                                 string
+	ObjectKey, RecordID, Event, Class, ActorID, RoleKey, RequestID string
+	OperationID, CausationID, OwnerRunID, CreatedFrom, CreatedTo   string
+	Limit                                                          int
+	Cursor                                                         string
 }
 type Query = AuditEventQuery
 type AuditEventCursor struct {
@@ -289,7 +281,6 @@ const (
 	AuditEventClassOperations = EventClassOperations
 )
 
-func AuditEventClassMarkers(class string) []string                  { return EventClassMarkers(class) }
 func ClassifyAuditEvent(event AuditEvent) string                    { return ClassifyEvent(event) }
 func EncodeAuditEventCursor(event AuditEvent) string                { return EncodeCursor(event) }
 func DecodeAuditEventCursor(value string) (AuditEventCursor, error) { return DecodeCursor(value) }

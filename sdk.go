@@ -8,7 +8,6 @@ import (
 
 	"github.com/domainry/domainry-audit-sdk/contract"
 	"github.com/domainry/domainry-audit-sdk/modulehost"
-	"github.com/domainry/domainry-foundation/modulecapability"
 )
 
 type DeploymentMode string
@@ -50,7 +49,6 @@ type Factory interface {
 }
 
 type Binding interface {
-	modulecapability.Binding
 	Descriptor() Descriptor
 	Factory() contract.EventFactory
 	Appender() contract.Appender
