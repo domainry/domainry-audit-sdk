@@ -14,6 +14,7 @@ const (
 	EventFamilyIdentityGovernance     = "identity.governance"
 	EventFamilyIdentityProfileBinding = "identity.profile_binding"
 	EventFamilyIdentitySecurity       = "identity.security"
+	EventFamilyKnowledgeCollaboration = "knowledge.collaboration"
 	EventFamilyLifecycleCompliance    = "lifecycle.compliance"
 	EventFamilyRuntimeAgent           = "runtime.agent"
 	EventFamilyRuntimeNotification    = "runtime.notification"
@@ -63,6 +64,10 @@ var eventFamilyRegistrations = map[string]EventFamilyRegistration{
 	},
 	EventFamilyIdentitySecurity: {
 		Key: EventFamilyIdentitySecurity, Owner: "identity", Class: EventClassOperations,
+	},
+	EventFamilyKnowledgeCollaboration: {
+		Key: EventFamilyKnowledgeCollaboration, Owner: "knowledge", Class: EventClassGovernance,
+		EventPrefixes: []string{"knowledge."},
 	},
 	EventFamilyLifecycleCompliance: {
 		Key: EventFamilyLifecycleCompliance, Owner: "lifecycle", Class: EventClassGovernance,

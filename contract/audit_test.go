@@ -21,6 +21,7 @@ func TestClassifyAuditEventUsesRegisteredFamily(t *testing.T) {
 		{AuditEvent{Family: EventFamilyBusinessRecord, Event: "record_updated"}, AuditEventClassBusiness},
 		{AuditEvent{Family: EventFamilyIdentityGovernance, Event: "identity_role_updated"}, AuditEventClassGovernance},
 		{AuditEvent{Family: EventFamilyIdentitySecurity, Event: "auth_login_failed"}, AuditEventClassOperations},
+		{AuditEvent{Family: EventFamilyKnowledgeCollaboration, Event: "knowledge.page.published"}, AuditEventClassGovernance},
 		{AuditEvent{Family: "unregistered", Event: "anything"}, ""},
 	}
 	for _, test := range tests {
