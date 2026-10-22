@@ -6,7 +6,7 @@ import (
 )
 
 func TestCursorRoundTrip(t *testing.T) {
-	event := Event{ID: "event-1", CreatedAt: time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)}
+	event := Event{ID: 42, CreatedAt: time.Date(2026, 8, 30, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)}
 	got, err := DecodeCursor(EncodeCursor(event))
 	if err != nil || got.ID != event.ID || got.CreatedAt != event.CreatedAt {
 		t.Fatalf("cursor=%+v err=%v", got, err)
@@ -87,8 +87,8 @@ func TestBuildEventKeepsRequestIDWithIdempotencyKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first.ID != second.ID {
-		t.Fatalf("idempotent ids differ: %q != %q", first.ID, second.ID)
+	if first.AuditEventID == second.AuditEventID || first.IdempotencyKey != request.IdempotencyKey || second.IdempotencyKey != request.IdempotencyKey {
+		t.Fatalf("business ids must be random while the idempotency key remains separate: first=%#v second=%#v", first, second)
 	}
 	if got := first.Metadata["request_id"]; got != "req-1" {
 		t.Fatalf("request_id=%v", got)

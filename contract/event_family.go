@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/domainry/domainry-foundation/entityid"
 )
 
 const (
@@ -168,7 +170,7 @@ func validateEventFamily(family, event string, metadata map[string]any) (EventFa
 }
 
 func ValidatePreparedEvent(event Event) error {
-	if strings.TrimSpace(event.WorkspaceID) == "" || strings.TrimSpace(event.ID) == "" || strings.TrimSpace(event.CreatedAt) == "" {
+	if strings.TrimSpace(event.WorkspaceID) == "" || entityid.Validate("audevt", event.AuditEventID) != nil || strings.TrimSpace(event.CreatedAt) == "" {
 		return fmt.Errorf("prepared audit event is incomplete")
 	}
 	_, err := validateEventFamily(event.Family, event.Event, event.Metadata)

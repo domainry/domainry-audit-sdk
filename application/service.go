@@ -15,6 +15,7 @@ import (
 )
 
 type AppendRequest[P any] struct {
+	AuditEventID   string
 	IdempotencyKey string
 	OperationID    string
 	CausationID    string
@@ -93,7 +94,7 @@ func (s *Service[P, S]) NewAuditEvent(ctx context.Context, request AppendRequest
 		operationID = requestcontext.OwnerExecutionID(ctx)
 	}
 	event, err := contract.BuildEvent(contract.AppendRequest{
-		IdempotencyKey: request.IdempotencyKey, OperationID: operationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID,
+		AuditEventID: request.AuditEventID, IdempotencyKey: request.IdempotencyKey, OperationID: operationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID,
 		Family: request.Family, Event: request.Event,
 		ObjectKey: request.ObjectKey, RecordID: request.RecordID,
 		Actor: s.policy.Actor(request.Principal), Summary: request.Summary,

@@ -2,16 +2,14 @@ package contract
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"time"
 
+	"github.com/domainry/domainry-foundation/entityid"
 	"github.com/domainry/domainry-foundation/secrets"
 )
 
@@ -32,7 +30,7 @@ type ExportRequest struct {
 	Format  string       `json:"format,omitempty"`
 }
 type ExportArtifact struct {
-	ID                       string       `json:"id"`
+	ArtifactID               string       `json:"artifact_id"`
 	WorkspaceID              string       `json:"workspace_id"`
 	RequesterUserID          string       `json:"requester_user_id"`
 	RoleKey                  string       `json:"role_key"`
@@ -66,7 +64,7 @@ type ExportPrincipal struct {
 	AuthorizationContext                                             any `json:"-"`
 }
 type ExportPrepared struct {
-	ID            string       `json:"id"`
+	ArtifactID    string       `json:"artifact_id"`
 	ReportSource  string       `json:"report_source"`
 	Filename      string       `json:"filename"`
 	ContentSHA256 string       `json:"content_sha256"`
@@ -123,6 +121,7 @@ type Actor struct {
 }
 
 type AppendRequest struct {
+	AuditEventID   string         `json:"audit_event_id,omitempty"`
 	IdempotencyKey string         `json:"idempotency_key,omitempty"`
 	OperationID    string         `json:"operation_id,omitempty"`
 	CausationID    string         `json:"causation_id,omitempty"`
@@ -175,32 +174,38 @@ func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
 		return AuditEvent{}, err
 	}
 	now = now.UTC()
-	id := NewEventID(now)
-	if strings.TrimSpace(request.IdempotencyKey) != "" {
-		id = IdempotentEventID(request.Actor.WorkspaceID, request.IdempotencyKey)
+	eventID := strings.TrimSpace(request.AuditEventID)
+	if eventID == "" {
+		var err error
+		eventID, err = entityid.New("audevt")
+		if err != nil {
+			return AuditEvent{}, fmt.Errorf("generate audit event id: %w", err)
+		}
+	} else if err := entityid.Validate("audevt", eventID); err != nil {
+		return AuditEvent{}, fmt.Errorf("validate audit event id: %w", err)
 	}
-	return AuditEvent{ID: id, WorkspaceID: request.Actor.WorkspaceID, OperationID: request.OperationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID, Family: request.Family, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID, ActorID: request.Actor.SubjectID, RoleKey: request.Actor.RoleKey, Summary: strings.TrimSpace(request.Summary), Metadata: metadata, Before: secrets.RedactMap(request.Before), After: secrets.RedactMap(request.After), CreatedAt: now.Format(time.RFC3339)}, nil
+	return AuditEvent{AuditEventID: eventID, IdempotencyKey: strings.TrimSpace(request.IdempotencyKey), WorkspaceID: request.Actor.WorkspaceID, OperationID: request.OperationID, CausationID: request.CausationID, OwnerRunID: request.OwnerRunID, Family: request.Family, Event: request.Event, ObjectKey: request.ObjectKey, RecordID: request.RecordID, ActorID: request.Actor.SubjectID, RoleKey: request.Actor.RoleKey, Summary: strings.TrimSpace(request.Summary), Metadata: metadata, Before: secrets.RedactMap(request.Before), After: secrets.RedactMap(request.After), CreatedAt: now.Format(time.RFC3339)}, nil
 }
 
-// Event preserves the installed Runtime/Identity storage and JSON contract so
-// the module can take ownership without a data migration.
 type AuditEvent struct {
-	ID          string         `json:"id"`
-	WorkspaceID string         `json:"workspace_id"`
-	OperationID string         `json:"operation_id,omitempty"`
-	CausationID string         `json:"causation_id,omitempty"`
-	OwnerRunID  string         `json:"owner_run_id,omitempty"`
-	Family      string         `json:"family"`
-	Event       string         `json:"event"`
-	ObjectKey   string         `json:"object_key,omitempty"`
-	RecordID    string         `json:"record_id,omitempty"`
-	ActorID     string         `json:"actor_id"`
-	RoleKey     string         `json:"role_key"`
-	Summary     string         `json:"summary"`
-	Metadata    map[string]any `json:"metadata,omitempty"`
-	Before      map[string]any `json:"before,omitempty"`
-	After       map[string]any `json:"after,omitempty"`
-	CreatedAt   string         `json:"created_at"`
+	ID             int64          `json:"id"`
+	AuditEventID   string         `json:"audit_event_id"`
+	IdempotencyKey string         `json:"-"`
+	WorkspaceID    string         `json:"workspace_id"`
+	OperationID    string         `json:"operation_id,omitempty"`
+	CausationID    string         `json:"causation_id,omitempty"`
+	OwnerRunID     string         `json:"owner_run_id,omitempty"`
+	Family         string         `json:"family"`
+	Event          string         `json:"event"`
+	ObjectKey      string         `json:"object_key,omitempty"`
+	RecordID       string         `json:"record_id,omitempty"`
+	ActorID        string         `json:"actor_id"`
+	RoleKey        string         `json:"role_key"`
+	Summary        string         `json:"summary"`
+	Metadata       map[string]any `json:"metadata,omitempty"`
+	Before         map[string]any `json:"before,omitempty"`
+	After          map[string]any `json:"after,omitempty"`
+	CreatedAt      string         `json:"created_at"`
 }
 type Event = AuditEvent
 
@@ -221,7 +226,7 @@ type AuditEventQuery struct {
 type Query = AuditEventQuery
 type AuditEventCursor struct {
 	CreatedAt string
-	ID        string
+	ID        int64
 }
 type Cursor = AuditEventCursor
 
@@ -229,8 +234,8 @@ func EncodeCursor(event Event) string {
 	raw, _ := json.Marshal(struct {
 		Version   int    `json:"v"`
 		CreatedAt string `json:"created_at"`
-		ID        string `json:"id"`
-	}{1, strings.TrimSpace(event.CreatedAt), strings.TrimSpace(event.ID)})
+		ID        int64  `json:"id"`
+	}{1, strings.TrimSpace(event.CreatedAt), event.ID})
 	return base64.RawURLEncoding.EncodeToString(raw)
 }
 func DecodeCursor(value string) (Cursor, error) {
@@ -245,12 +250,12 @@ func DecodeCursor(value string) (Cursor, error) {
 	var payload struct {
 		Version   int    `json:"v"`
 		CreatedAt string `json:"created_at"`
-		ID        string `json:"id"`
+		ID        int64  `json:"id"`
 	}
-	if json.Unmarshal(raw, &payload) != nil || payload.Version != 1 || strings.TrimSpace(payload.CreatedAt) == "" || strings.TrimSpace(payload.ID) == "" {
+	if json.Unmarshal(raw, &payload) != nil || payload.Version != 1 || strings.TrimSpace(payload.CreatedAt) == "" || payload.ID < 1 {
 		return Cursor{}, errors.New("audit event cursor payload is invalid")
 	}
-	return Cursor{CreatedAt: strings.TrimSpace(payload.CreatedAt), ID: strings.TrimSpace(payload.ID)}, nil
+	return Cursor{CreatedAt: strings.TrimSpace(payload.CreatedAt), ID: payload.ID}, nil
 }
 
 type AuditOption struct {
@@ -264,16 +269,6 @@ type AuditOptionQuery struct {
 	Limit                                           int
 }
 type OptionQuery = AuditOptionQuery
-
-var eventSequence atomic.Uint64
-
-func NewEventID(now time.Time) string {
-	return fmt.Sprintf("audit_%d_%d", now.UnixNano(), eventSequence.Add(1))
-}
-func IdempotentEventID(workspaceID, key string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(key)))
-	return "audit_idem_" + hex.EncodeToString(sum[:16])
-}
 
 const (
 	AuditEventClassBusiness   = EventClassBusiness
@@ -324,6 +319,6 @@ type TransactionalAppender interface {
 	AppendWithin(context.Context, Transaction, AppendRequest) (Event, error)
 }
 type PreparedAppender interface {
-	AppendPrepared(context.Context, Event) error
-	AppendPreparedWithin(context.Context, Transaction, Event) error
+	AppendPrepared(context.Context, Event) (Event, error)
+	AppendPreparedWithin(context.Context, Transaction, Event) (Event, error)
 }
