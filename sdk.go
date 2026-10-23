@@ -14,7 +14,7 @@ type DeploymentMode string
 
 const (
 	DeploymentModeModule DeploymentMode = "module"
-	ProtocolVersionV1                   = "domainry-audit-protocol-v1"
+	ProtocolVersionV2                   = "domainry-audit-protocol-v2"
 )
 
 type ApplicationRef struct {
@@ -38,7 +38,7 @@ type Descriptor struct {
 }
 
 func (d Descriptor) Validate() error {
-	if d.ProtocolVersion != ProtocolVersionV1 || d.Mode != DeploymentModeModule || !d.Capabilities.TransactionalAppend {
+	if d.ProtocolVersion != ProtocolVersionV2 || d.Mode != DeploymentModeModule || !d.Capabilities.TransactionalAppend {
 		return fmt.Errorf("invalid Audit module descriptor")
 	}
 	return nil

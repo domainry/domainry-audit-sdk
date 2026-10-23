@@ -59,7 +59,7 @@ type ExportStore interface {
 
 type ExportPrincipal struct {
 	WorkspaceID, UserID, RoleKey, AuthorizationRevision, SystemScope string
-	RequestID, CorrelationID                                         string
+	RequestID                                                        string
 	SystemCapabilities                                               []string
 	AuthorizationContext                                             any `json:"-"`
 }
@@ -115,7 +115,6 @@ type Actor struct {
 	RoleKey               string `json:"role_key,omitempty"`
 	Kind                  string `json:"kind,omitempty"`
 	RequestID             string `json:"request_id,omitempty"`
-	CorrelationID         string `json:"correlation_id,omitempty"`
 	CausationID           string `json:"causation_id,omitempty"`
 	AuthorizationRevision string `json:"authorization_revision,omitempty"`
 }
@@ -160,9 +159,6 @@ func BuildEvent(request AppendRequest, now time.Time) (AuditEvent, error) {
 	metadata["workspace_id"] = request.Actor.WorkspaceID
 	if request.Actor.RequestID != "" {
 		metadata["request_id"] = request.Actor.RequestID
-	}
-	if request.Actor.CorrelationID != "" {
-		metadata["correlation_id"] = request.Actor.CorrelationID
 	}
 	if request.Actor.SubjectID != "" {
 		metadata["actor_id"] = request.Actor.SubjectID

@@ -95,7 +95,7 @@ func TestBuildEventKeepsRequestIDWithIdempotencyKey(t *testing.T) {
 	}
 }
 
-func TestBuildEventKeepsExplicitCorrelationIdentities(t *testing.T) {
+func TestBuildEventKeepsExplicitBusinessLineage(t *testing.T) {
 	now := time.Date(2026, 9, 23, 9, 0, 0, 0, time.UTC)
 	event, err := BuildEvent(AppendRequest{
 		OperationID: " operation-1 ", OwnerRunID: " workflow-1 ",
@@ -107,7 +107,7 @@ func TestBuildEventKeepsExplicitCorrelationIdentities(t *testing.T) {
 		t.Fatal(err)
 	}
 	if event.OperationID != "operation-1" || event.CausationID != "cause-1" || event.OwnerRunID != "workflow-1" {
-		t.Fatalf("correlation identities=%#v", event)
+		t.Fatalf("business lineage=%#v", event)
 	}
 	if _, duplicated := event.Metadata["causation_id"]; duplicated {
 		t.Fatalf("causation identity was duplicated into metadata: %#v", event.Metadata)

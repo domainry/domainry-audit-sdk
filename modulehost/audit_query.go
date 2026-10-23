@@ -14,7 +14,6 @@ type AuditPrincipalRequest struct {
 	BusinessProfileKey string
 	BusinessProfileID  string
 	RequestID          string
-	CorrelationID      string
 }
 
 // AuditPrincipal is the host-resolved authority used by Audit. The base
@@ -25,7 +24,6 @@ type AuditPrincipal struct {
 	BusinessProfileKey    string
 	BusinessProfileID     string
 	RequestID             string
-	CorrelationID         string
 	AuthorizationRevision string
 }
 

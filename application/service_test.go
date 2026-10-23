@@ -22,7 +22,7 @@ func TestServiceCorrelatesAuditWithAcceptedOperation(t *testing.T) {
 		Family: contract.EventFamilyBusinessAction, Event: "action.executed", Principal: principal, OwnerRunID: "workflow-1", Metadata: map[string]any{"action_key": "order.approve"},
 	})
 	if event.OperationID != "operation-1" || event.OwnerRunID != "workflow-1" {
-		t.Fatalf("event correlation=%#v", event)
+		t.Fatalf("event lineage=%#v", event)
 	}
 	explicit := service.NewAuditEvent(ctx, AppendRequest[testPrincipal]{
 		OperationID: "operation-explicit", Family: contract.EventFamilyBusinessAction, Event: "action.executed", Principal: principal, Metadata: map[string]any{"action_key": "order.approve"},
